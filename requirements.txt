@@ -1,0 +1,3 @@
+# requirements.txt
+flask
+# Add other dependencies such as numpy, pandas, datasketch, etc. as needed
