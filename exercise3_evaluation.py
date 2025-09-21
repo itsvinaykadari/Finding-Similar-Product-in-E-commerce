@@ -1,6 +1,8 @@
 import json
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Use non-GUI backend to avoid threading issues
 import matplotlib.pyplot as plt
 import seaborn as sns
 import re
@@ -8,12 +10,21 @@ from datasketch import MinHashLSH, MinHash
 from index_lsh import get_shingles, create_minhash
 from collections import defaultdict
 import os
+from multiprocessing import Pool, cpu_count
+import functools
 
 class Exercise3Evaluator:
-    def __init__(self, products_file="processed_appliances.json"):
+    def __init__(self, products_file="processed_appliances.json", sample_size=None):
         """Initialize evaluator for Exercise 3"""
         with open(products_file, "r", encoding="utf-8") as f:
             self.products = json.load(f)
+        
+        # Optional: Use a sample for faster testing
+        if sample_size and sample_size < len(self.products):
+            print(f"Using sample of {sample_size} products for faster evaluation")
+            import random
+            random.seed(42)  # For reproducible results
+            self.products = random.sample(self.products, sample_size)
         
         # Create ASIN to index mapping
         self.asin_to_idx = {prod['asin']: i for i, prod in enumerate(self.products)}
@@ -228,9 +239,14 @@ class Exercise3Evaluator:
             print(f"Error in calculate_map_at_k_with_params: {e}")
             return 0.0, []
     
-    def evaluate_exercise_3(self):
-        """Evaluate Exercise 3 requirements with proper grid search"""
+    def evaluate_exercise_3(self, fast_mode=False):
+        """
+        Evaluate Exercise 3 requirements with proper grid search
+        fast_mode: If True, uses reduced parameter grid for faster testing
+        """
         print("Starting Exercise 3 Evaluation with Grid Search...")
+        if fast_mode:
+            print("⚡ Fast mode enabled - using reduced parameter grid")
         
         results = {
             'PST': {'shingle_k': {}, 'num_hashes': {}, 'lsh_params': {}},
@@ -238,17 +254,23 @@ class Exercise3Evaluator:
         }
         
         # Define hyperparameter ranges
-        shingle_k_values = [2, 3, 5, 7, 10]
-        num_hashes_values = [10, 20, 50, 100, 150]
-        
-        # Define (b, r) combinations for LSH parameters test (keeping num_hashes=100)
-        lsh_configs = [
-            (4, 25),   # 4*25 = 100
-            (5, 20),   # 5*20 = 100
-            (10, 10),  # 10*10 = 100
-            (20, 5),   # 20*5 = 100
-            (25, 4),   # 25*4 = 100
-        ]
+        if fast_mode:
+            shingle_k_values = [3, 5]  # Reduced from [2, 3, 5, 7, 10]
+            num_hashes_values = [50, 100]  # Reduced from [10, 20, 50, 100, 150]
+            lsh_configs = [
+                (10, 10),  # 10*10 = 100
+                (20, 5),   # 20*5 = 100
+            ]
+        else:
+            shingle_k_values = [2, 3, 5, 7, 10]
+            num_hashes_values = [10, 20, 50, 100, 150]
+            lsh_configs = [
+                (4, 25),   # 4*25 = 100
+                (5, 20),   # 5*20 = 100
+                (10, 10),  # 10*10 = 100
+                (20, 5),   # 20*5 = 100
+                (25, 4),   # 25*4 = 100
+            ]
         
         # Define optimal baseline parameters for each test
         baseline_params = {
@@ -338,6 +360,224 @@ class Exercise3Evaluator:
                 print(f"b={b}, r={r}: MAP@10 = {map_score:.4f}")
         
         return results
+    
+    def evaluate_exercise_3_with_incremental_output(self, fast_mode=False):
+        """
+        Evaluate Exercise 3 with incremental output and progress tracking
+        """
+        print("Starting Exercise 3 Evaluation with Incremental Output...")
+        if fast_mode:
+            print("⚡ Fast mode enabled - using reduced parameter grid")
+        
+        results = {
+            'PST': {'shingle_k': {}, 'num_hashes': {}, 'lsh_params': {}},
+            'PSD': {'shingle_k': {}, 'num_hashes': {}, 'lsh_params': {}}
+        }
+        
+        # Create output directory for incremental results
+        output_dir = "exercise3_incremental_results"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Define hyperparameter ranges
+        if fast_mode:
+            shingle_k_values = [3, 5]
+            num_hashes_values = [50, 100]
+            lsh_configs = [(10, 10), (20, 5)]
+        else:
+            shingle_k_values = [2, 3, 5, 7, 10]
+            num_hashes_values = [10, 20, 50, 100, 150]
+            lsh_configs = [(4, 25), (5, 20), (10, 10), (20, 5), (25, 4)]
+        
+        baseline_params = {'shingle_k': 3, 'num_hashes': 100, 'b': 20, 'r': 5}
+        
+        # Check available modes
+        modes = []
+        pst_count = sum(1 for p in self.products if p.get('title', '').strip())
+        psd_count = sum(1 for p in self.products if p.get('description', '').strip())
+        
+        if pst_count > 0:
+            modes.append('PST')
+            print(f"✅ PST mode available: {pst_count} products with titles")
+        if psd_count > 0:
+            modes.append('PSD')
+            print(f"✅ PSD mode available: {psd_count} products with descriptions")
+        else:
+            print("❌ PSD mode unavailable: No products with descriptions")
+        
+        if not modes:
+            print("ERROR: No valid modes available!")
+            return {}
+        
+        # Calculate total tests for progress tracking
+        total_tests = len(modes) * (len(shingle_k_values) + len(num_hashes_values) + len(lsh_configs))
+        current_test = 0
+        
+        for mode in modes:
+            print(f"\n{'='*60}")
+            print(f"EVALUATING MODE: {mode}")
+            print(f"{'='*60}")
+            
+            # 1. Test K-character shingles
+            print(f"\n📊 TESTING K-CHARACTER SHINGLES ({mode})")
+            print("-" * 50)
+            
+            for k in shingle_k_values:
+                current_test += 1
+                print(f"[{current_test}/{total_tests}] Testing shingle K={k}...")
+                
+                map_score, _ = self.calculate_map_at_k_with_params(
+                    mode=mode, shingle_k=k, 
+                    num_hashes=baseline_params['num_hashes'], 
+                    b=baseline_params['b'], r=baseline_params['r'], k=10
+                )
+                
+                results[mode]['shingle_k'][k] = map_score
+                print(f"✅ K={k}: MAP@10 = {map_score:.4f}")
+                
+                # Save incremental results
+                self._save_incremental_results(results, output_dir, f"{mode}_shingle_k_progress")
+            
+            # Generate intermediate table for shingle results
+            self._generate_intermediate_table(results[mode]['shingle_k'], 
+                                            f"{output_dir}/{mode}_shingle_k_results.csv",
+                                            "K", "Shingle K Results")
+            
+            # 2. Test number of hash functions
+            print(f"\n🔢 TESTING NUMBER OF HASH FUNCTIONS ({mode})")
+            print("-" * 50)
+            
+            for num_hashes in num_hashes_values:
+                current_test += 1
+                
+                # Adjust b and r for different hash counts
+                if num_hashes <= 20:
+                    b, r = min(num_hashes, 5), max(1, num_hashes // 5)
+                elif num_hashes <= 50:
+                    b, r = 10, num_hashes // 10
+                elif num_hashes <= 100:
+                    b, r = 20, num_hashes // 20
+                else:
+                    b, r = 30, num_hashes // 30
+                
+                print(f"[{current_test}/{total_tests}] Testing {num_hashes} hash functions (b={b}, r={r})...")
+                
+                map_score, _ = self.calculate_map_at_k_with_params(
+                    mode=mode, shingle_k=baseline_params['shingle_k'], 
+                    num_hashes=num_hashes, b=b, r=r, k=10
+                )
+                
+                results[mode]['num_hashes'][num_hashes] = map_score
+                print(f"✅ Hashes={num_hashes}: MAP@10 = {map_score:.4f}")
+                
+                # Save incremental results
+                self._save_incremental_results(results, output_dir, f"{mode}_num_hashes_progress")
+            
+            # Generate intermediate table for hash results
+            self._generate_intermediate_table(results[mode]['num_hashes'], 
+                                            f"{output_dir}/{mode}_hash_functions_results.csv",
+                                            "Num_Hashes", "Hash Functions Results")
+            
+            # 3. Test LSH parameters
+            print(f"\n⚙️  TESTING LSH PARAMETERS ({mode})")
+            print("-" * 50)
+            
+            for b, r in lsh_configs:
+                current_test += 1
+                print(f"[{current_test}/{total_tests}] Testing b={b}, r={r}...")
+                
+                map_score, _ = self.calculate_map_at_k_with_params(
+                    mode=mode, shingle_k=baseline_params['shingle_k'], 
+                    num_hashes=100, b=b, r=r, k=10
+                )
+                
+                results[mode]['lsh_params'][(b, r)] = map_score
+                print(f"✅ b={b}, r={r}: MAP@10 = {map_score:.4f}")
+                
+                # Save incremental results
+                self._save_incremental_results(results, output_dir, f"{mode}_lsh_params_progress")
+            
+            # Generate intermediate table for LSH results
+            lsh_data = {f"b={b},r={r}": score for (b, r), score in results[mode]['lsh_params'].items()}
+            self._generate_intermediate_table(lsh_data, 
+                                            f"{output_dir}/{mode}_lsh_params_results.csv",
+                                            "LSH_Params", "LSH Parameters Results")
+            
+            # Generate intermediate summary for this mode
+            self._generate_intermediate_summary(results[mode], mode, output_dir)
+            
+            print(f"\n🎯 COMPLETED MODE: {mode}")
+            if results[mode]['shingle_k']:
+                best_k = max(results[mode]['shingle_k'], key=results[mode]['shingle_k'].get)
+                print(f"  - Best Shingle K: {best_k} (MAP@10: {results[mode]['shingle_k'][best_k]:.4f})")
+            if results[mode]['num_hashes']:
+                best_hash = max(results[mode]['num_hashes'], key=results[mode]['num_hashes'].get)
+                print(f"  - Best Hash Count: {best_hash} (MAP@10: {results[mode]['num_hashes'][best_hash]:.4f})")
+            if results[mode]['lsh_params']:
+                best_lsh = max(results[mode]['lsh_params'], key=results[mode]['lsh_params'].get)
+                print(f"  - Best LSH Params: {best_lsh} (MAP@10: {results[mode]['lsh_params'][best_lsh]:.4f})")
+        
+        # Generate final comprehensive results
+        print(f"\n🏁 GENERATING FINAL COMPREHENSIVE RESULTS...")
+        self.generate_tables_and_graphs(results)
+        
+        print(f"\n✅ EVALUATION COMPLETE!")
+        print(f"📁 Incremental results saved in: {output_dir}/")
+        print(f"📁 Final results saved in: exercise3_results/")
+        
+        return results
+    
+    def _save_incremental_results(self, results, output_dir, filename):
+        """Save incremental results to JSON file"""
+        import json
+        
+        # Convert tuple keys to strings for JSON serialization
+        json_results = {}
+        for mode in results:
+            json_results[mode] = {}
+            for test_type in results[mode]:
+                json_results[mode][test_type] = {}
+                for key, value in results[mode][test_type].items():
+                    # Convert tuple keys to strings
+                    if isinstance(key, tuple):
+                        str_key = f"b={key[0]},r={key[1]}"
+                    else:
+                        str_key = str(key)
+                    json_results[mode][test_type][str_key] = value
+        
+        with open(f"{output_dir}/{filename}.json", 'w') as f:
+            json.dump(json_results, f, indent=2)
+    
+    def _generate_intermediate_table(self, data, filepath, param_name, title):
+        """Generate intermediate CSV table"""
+        df = pd.DataFrame(list(data.items()), columns=[param_name, 'MAP@10'])
+        df.to_csv(filepath, index=False)
+        print(f"📊 Saved intermediate table: {filepath}")
+    
+    def _generate_intermediate_summary(self, mode_results, mode, output_dir):
+        """Generate intermediate summary for a mode"""
+        summary = f"\n{'='*40}\n"
+        summary += f"INTERMEDIATE SUMMARY - {mode} MODE\n"
+        summary += f"{'='*40}\n\n"
+        
+        if mode_results['shingle_k']:
+            best_k = max(mode_results['shingle_k'], key=mode_results['shingle_k'].get)
+            summary += f"Best Shingle K: {best_k} (MAP@10: {mode_results['shingle_k'][best_k]:.4f})\n"
+            summary += f"Shingle K results: {dict(mode_results['shingle_k'])}\n\n"
+        
+        if mode_results['num_hashes']:
+            best_hash = max(mode_results['num_hashes'], key=mode_results['num_hashes'].get)
+            summary += f"Best Hash Count: {best_hash} (MAP@10: {mode_results['num_hashes'][best_hash]:.4f})\n"
+            summary += f"Hash count results: {dict(mode_results['num_hashes'])}\n\n"
+        
+        if mode_results['lsh_params']:
+            best_lsh = max(mode_results['lsh_params'], key=mode_results['lsh_params'].get)
+            summary += f"Best LSH Params: {best_lsh} (MAP@10: {mode_results['lsh_params'][best_lsh]:.4f})\n"
+            summary += f"LSH params results: {dict(mode_results['lsh_params'])}\n\n"
+        
+        with open(f"{output_dir}/{mode}_intermediate_summary.txt", 'w') as f:
+            f.write(summary)
+        
+        print(summary)
     
     def generate_tables_and_graphs(self, results):
         """Generate tables and graphs for Exercise 3"""
@@ -480,12 +720,19 @@ class Exercise3Evaluator:
         
         # Find best configuration for each category and mode
         best_configs = {}
-        for mode in modes:
-            best_configs[mode] = {
-                'shingle_k': max(results[mode]['shingle_k'], key=results[mode]['shingle_k'].get),
-                'num_hashes': max(results[mode]['num_hashes'], key=results[mode]['num_hashes'].get),
-                'lsh_params': max(results[mode]['lsh_params'], key=results[mode]['lsh_params'].get)
-            }
+        for mode in results:
+            if any(results[mode].values()):  # Only process modes with results
+                best_configs[mode] = {}
+                if results[mode]['shingle_k']:
+                    best_configs[mode]['shingle_k'] = max(results[mode]['shingle_k'], key=results[mode]['shingle_k'].get)
+                if results[mode]['num_hashes']:
+                    best_configs[mode]['num_hashes'] = max(results[mode]['num_hashes'], key=results[mode]['num_hashes'].get)
+                if results[mode]['lsh_params']:
+                    best_configs[mode]['lsh_params'] = max(results[mode]['lsh_params'], key=results[mode]['lsh_params'].get)
+        
+        if not best_configs:
+            print("No results to plot!")
+            return
         
         # Bar width
         width = 0.2
