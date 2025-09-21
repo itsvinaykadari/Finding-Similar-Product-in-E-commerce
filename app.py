@@ -414,6 +414,7 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; }
 .no-precision { background: #f0f0f0; color: #666; font-style: italic; }
 </style>
 <div class="main-container">
+    <h1 style="text-align: center; margin-bottom: 32px; color: #2c3e50; font-size: 2.5em; font-weight: bold;">Finding Similar Product in E-commerce</h1>
     <h2 style="margin-bottom:24px;">Product List (Page {{ page }})</h2>
     <div style="margin-bottom: 20px;">
         <a href="/exercise3" style="background: #e74c3c; color: white; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold;">
@@ -650,7 +651,8 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
 
 <div class="container">
     <div class="header">
-        <h1>Exercise 3: LSH Hyperparameter Evaluation</h1>
+        <h1 style="color: #2c3e50; font-size: 2.5em; margin-bottom: 20px;">Finding Similar Product in E-commerce</h1>
+        <h2 style="color: #34495e; margin-bottom: 10px;">Exercise 3: LSH Hyperparameter Evaluation</h2>
         <p>Comprehensive evaluation of LSH algorithm performance with different hyperparameters</p>
     </div>
 
@@ -786,93 +788,48 @@ function runExercise3() {
 }
 
 function displayExercise3Results(data) {
-    // Display evaluation statistics
+    // Display simple success message
     const statsDiv = document.getElementById('eval-stats');
     statsDiv.innerHTML = `
-        <div class="stat-card">
-            <div class="stat-value">${data.eval_stats.total_products}</div>
-            <div class="stat-label">Products Evaluated</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${data.eval_stats.max_similar_items}</div>
-            <div class="stat-label">Max Similar Items</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${data.eval_stats.min_similar_items}</div>
-            <div class="stat-label">Min Similar Items</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">${data.eval_stats.avg_similar_items.toFixed(1)}</div>
-            <div class="stat-label">Avg Similar Items</div>
+        <div class="stat-card" style="width: 100%; text-align: center; padding: 20px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; color: #155724;">
+            <div class="stat-value" style="font-size: 2em; margin-bottom: 10px;">✓</div>
+            <div class="stat-label" style="font-size: 1.2em; font-weight: bold;">Evaluation Completed Successfully!</div>
+            <div style="margin-top: 10px; font-size: 0.9em;">
+                All results have been saved to the <strong>${data.output_dir}</strong> folder
+            </div>
         </div>
     `;
     
-    // Display results tables
+    // Clear results tables and show simple info
     const tablesDiv = document.getElementById('results-tables');
-    let tablesHtml = '';
+    tablesDiv.innerHTML = `
+        <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; margin: 20px 0;">
+            <h4>Files Generated</h4>
+            <p>Number of files created: <strong>${data.files_count}</strong></p>
+            ${data.sample_files.length > 0 ? 
+                `<p>Sample files: ${data.sample_files.map(f => `<code>${f}</code>`).join(', ')}</p>` 
+                : ''}
+            <p style="margin-top: 15px; color: #666;">
+                Check the <strong>${data.output_dir}</strong> folder in your project directory for all CSV files, visualizations, and analysis reports.
+            </p>
+        </div>
+    `;
     
-    const modes = ['PST', 'PSD'];
-    const categories = ['shingle_k', 'num_hashes', 'lsh_params'];
-    const categoryNames = ['K-character Shingles', 'Number of Hash Functions', 'LSH Parameters (b, r)'];
-    
-    for (const mode of modes) {
-        tablesHtml += `<h4>${mode} Mode Results</h4>`;
-        
-        for (let i = 0; i < categories.length; i++) {
-            const category = categories[i];
-            const categoryName = categoryNames[i];
-            
-            tablesHtml += `<h5>${categoryName}</h5>`;
-            tablesHtml += '<table class="results-table">';
-            
-            if (category === 'lsh_params') {
-                tablesHtml += '<thead><tr><th>b</th><th>r</th><th>MAP@10</th></tr></thead>';
-                tablesHtml += '<tbody>';
-                
-                // Sort by MAP@10 score descending
-                const sortedEntries = Object.entries(data.results[mode][category])
-                    .sort((a, b) => b[1] - a[1]);
-                
-                for (const [params, score] of sortedEntries) {
-                    const [b, r] = params.split(',').map(x => x.trim());
-                    tablesHtml += `<tr><td>${b}</td><td>${r}</td><td>${score.toFixed(4)}</td></tr>`;
-                }
-            } else {
-                const header = category === 'shingle_k' ? 'K' : 'Hash Functions';
-                tablesHtml += `<thead><tr><th>${header}</th><th>MAP@10</th></tr></thead>`;
-                tablesHtml += '<tbody>';
-                
-                // Sort by MAP@10 score descending
-                const sortedEntries = Object.entries(data.results[mode][category])
-                    .sort((a, b) => b[1] - a[1]);
-                
-                for (const [param, score] of sortedEntries) {
-                    tablesHtml += `<tr><td>${param}</td><td>${score.toFixed(4)}</td></tr>`;
-                }
-            }
-            
-            tablesHtml += '</tbody></table>';
-        }
-    }
-    
-    tablesDiv.innerHTML = tablesHtml;
-    
-    // Show download section
+    // Show download section with simplified message
     const downloadSection = document.getElementById('download-section');
     downloadSection.style.display = 'block';
     
     const downloadLinks = document.getElementById('download-links');
     downloadLinks.innerHTML = `
-        <p><strong>Generated Files in '${data.output_dir}' directory:</strong></p>
-        <div style="text-align: left; max-width: 600px; margin: 0 auto;">
-            <ul style="color: white;">
-                <li>Comprehensive visualization plots</li>
-                <li>Individual mode analysis plots</li>
-                <li>CSV tables for each hyperparameter</li>
-                <li>Detailed summary report</li>
-            </ul>
+        <p><strong>All results saved in '${data.output_dir}' directory</strong></p>
+        <div style="text-align: center; padding: 20px;">
+            <p style="color: #28a745; font-size: 1.1em; margin-bottom: 10px;">
+                Exercise 3 evaluation is complete!
+            </p>
+            <p style="color: #666;">
+                You can now find all CSV files, visualization plots, and analysis reports in your project folder.
+            </p>
         </div>
-        <p><em>All files have been saved to your local directory and are ready for use in your report!</em></p>
     `;
 }
 </script>
@@ -1147,32 +1104,32 @@ def dataset_status():
 
 @app.route('/run_exercise3')
 def run_exercise3():
-    """Run Exercise 3 evaluation and return results"""
+    """Run Exercise 3 evaluation and return simple success message"""
     try:
         from exercise3_evaluation import Exercise3Evaluator
-        evaluator = Exercise3Evaluator()
+        import os
         
-        # Check dataset capabilities
-        pst_count = sum(1 for p in evaluator.products if p.get('title', '').strip())
-        psd_count = sum(1 for p in evaluator.products if p.get('description', '').strip())
+        evaluator = Exercise3Evaluator()
         
         # Run the incremental evaluation (use fast_mode=False for full evaluation)
         results = evaluator.evaluate_exercise_3_with_incremental_output(fast_mode=False)
         
+        # Check if results folder exists and has files
+        output_dir = 'exercise3_results'
+        files_created = []
+        if os.path.exists(output_dir):
+            files_created = [f for f in os.listdir(output_dir) if not f.startswith('.')]
+        
         return jsonify({
             'success': True,
-            'results': results,
+            'message': 'Exercise 3 evaluation completed successfully!',
+            'output_dir': output_dir,
+            'files_count': len(files_created),
+            'sample_files': files_created[:5] if files_created else [],
             'eval_stats': {
-                **evaluator.eval_stats,
-                'dataset_info': {
-                    'total_products': len(evaluator.products),
-                    'products_with_titles': pst_count,
-                    'products_with_descriptions': psd_count,
-                    'pst_mode_available': pst_count > 0,
-                    'psd_mode_available': psd_count > 0
-                }
-            },
-            'output_directory': 'exercise3_results'
+                'total_products': evaluator.eval_stats.get('total_products', 'N/A'),
+                'products_evaluated': len(evaluator.eval_set) if hasattr(evaluator, 'eval_set') else 'N/A'
+            }
         })
     except Exception as e:
         import traceback

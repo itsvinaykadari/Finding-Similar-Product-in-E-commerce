@@ -287,10 +287,10 @@ class Exercise3Evaluator:
         
         if pst_count > 0:
             modes.append('PST')
-            print(f"✅ PST mode available: {pst_count} products with titles")
+            print(f" PST mode available: {pst_count} products with titles")
         if psd_count > 0:
             modes.append('PSD')
-            print(f"✅ PSD mode available: {psd_count} products with descriptions")
+            print(f" PSD mode available: {psd_count} products with descriptions")
         
         if not modes:
             print("ERROR: No valid modes available!")
@@ -306,7 +306,7 @@ class Exercise3Evaluator:
                         valid_combinations.append((k, num_hashes, b, r))
         
         total_combinations = len(valid_combinations) * len(modes)
-        print(f"\n📊 FULL GRID SEARCH: Testing {len(valid_combinations)} parameter combinations across {len(modes)} modes")
+        print(f"\n FULL GRID SEARCH: Testing {len(valid_combinations)} parameter combinations across {len(modes)} modes")
         print(f"Total tests: {total_combinations}")
         
         combination_count = 0
@@ -339,7 +339,7 @@ class Exercise3Evaluator:
                     'map_at_10': map_score
                 }
                 
-                print(f"✅ MAP@10 = {map_score:.4f}")
+                print(f" MAP@10 = {map_score:.4f}")
         
         # Find best combinations for each mode
         for mode in modes:
@@ -510,10 +510,10 @@ class Exercise3Evaluator:
         
         if pst_count > 0:
             modes.append('PST')
-            print(f"✅ PST mode available: {pst_count} products with titles")
+            print(f" PST mode available: {pst_count} products with titles")
         if psd_count > 0:
             modes.append('PSD')
-            print(f"✅ PSD mode available: {psd_count} products with descriptions")
+            print(f" PSD mode available: {psd_count} products with descriptions")
         else:
             print("❌ PSD mode unavailable: No products with descriptions")
         
@@ -531,7 +531,7 @@ class Exercise3Evaluator:
             print(f"{'='*60}")
             
             # 1. Test K-character shingles
-            print(f"\n📊 TESTING K-CHARACTER SHINGLES ({mode})")
+            print(f"\n TESTING K-CHARACTER SHINGLES ({mode})")
             print("-" * 50)
             
             for k in shingle_k_values:
@@ -545,7 +545,7 @@ class Exercise3Evaluator:
                 )
                 
                 results[mode]['shingle_k'][k] = map_score
-                print(f"✅ K={k}: MAP@10 = {map_score:.4f}")
+                print(f" K={k}: MAP@10 = {map_score:.4f}")
                 
                 # Save incremental results
                 self._save_incremental_results(results, output_dir, f"{mode}_shingle_k_progress")
@@ -556,7 +556,7 @@ class Exercise3Evaluator:
                                             "K", "Shingle K Results")
             
             # 2. Test number of hash functions
-            print(f"\n🔢 TESTING NUMBER OF HASH FUNCTIONS ({mode})")
+            print(f"\n TESTING NUMBER OF HASH FUNCTIONS ({mode})")
             print("-" * 50)
             
             for num_hashes in num_hashes_values:
@@ -580,7 +580,7 @@ class Exercise3Evaluator:
                 )
                 
                 results[mode]['num_hashes'][num_hashes] = map_score
-                print(f"✅ Hashes={num_hashes}: MAP@10 = {map_score:.4f}")
+                print(f" Hashes={num_hashes}: MAP@10 = {map_score:.4f}")
                 
                 # Save incremental results
                 self._save_incremental_results(results, output_dir, f"{mode}_num_hashes_progress")
@@ -591,7 +591,7 @@ class Exercise3Evaluator:
                                             "Num_Hashes", "Hash Functions Results")
             
             # 3. Test LSH parameters
-            print(f"\n⚙️  TESTING LSH PARAMETERS ({mode})")
+            print(f"\n TESTING LSH PARAMETERS ({mode})")
             print("-" * 50)
             
             for b, r in lsh_configs:
@@ -604,7 +604,7 @@ class Exercise3Evaluator:
                 )
                 
                 results[mode]['lsh_params'][(b, r)] = map_score
-                print(f"✅ b={b}, r={r}: MAP@10 = {map_score:.4f}")
+                print(f" b={b}, r={r}: MAP@10 = {map_score:.4f}")
                 
                 # Save incremental results
                 self._save_incremental_results(results, output_dir, f"{mode}_lsh_params_progress")
@@ -618,7 +618,7 @@ class Exercise3Evaluator:
             # Generate intermediate summary for this mode
             self._generate_intermediate_summary(results[mode], mode, output_dir)
             
-            print(f"\n🎯 COMPLETED MODE: {mode}")
+            print(f"\n COMPLETED MODE: {mode}")
             if results[mode]['shingle_k']:
                 best_k = max(results[mode]['shingle_k'], key=results[mode]['shingle_k'].get)
                 print(f"  - Best Shingle K: {best_k} (MAP@10: {results[mode]['shingle_k'][best_k]:.4f})")
@@ -633,9 +633,9 @@ class Exercise3Evaluator:
         print(f"\n🏁 GENERATING FINAL COMPREHENSIVE RESULTS...")
         self.generate_tables_and_graphs(results)
         
-        print(f"\n✅ EVALUATION COMPLETE!")
-        print(f"📁 Incremental results saved in: {output_dir}/")
-        print(f"📁 Final results saved in: exercise3_results/")
+        print(f"\n EVALUATION COMPLETE!")
+        print(f" Incremental results saved in: {output_dir}/")
+        print(f" Final results saved in: exercise3_results/")
         
         return results
     
@@ -664,7 +664,7 @@ class Exercise3Evaluator:
         """Generate intermediate CSV table"""
         df = pd.DataFrame(list(data.items()), columns=[param_name, 'MAP@10'])
         df.to_csv(filepath, index=False)
-        print(f"📊 Saved intermediate table: {filepath}")
+        print(f" Saved intermediate table: {filepath}")
     
     def _generate_intermediate_summary(self, mode_results, mode, output_dir):
         """Generate intermediate summary for a mode"""
@@ -910,7 +910,7 @@ class Exercise3Evaluator:
         plt.savefig(f'{output_dir}/exercise3_hyperparameter_evaluation.png', dpi=300, bbox_inches='tight')
         plt.close()
         
-        print(f"📊 Graphs saved to: {output_dir}/exercise3_hyperparameter_evaluation.png")
+        print(f" Graphs saved to: {output_dir}/exercise3_hyperparameter_evaluation.png")
     
     def _generate_summary_report(self, results, output_dir):
         """Generate a summary report (TXT) for the results"""
@@ -951,4 +951,4 @@ class Exercise3Evaluator:
         with open(report_path, "w", encoding="utf-8") as report_file:
             report_file.write("\n".join(report_lines))
         
-        print(f"📄 Summary report saved to: {report_path}")
+        print(f" Summary report saved to: {report_path}")
