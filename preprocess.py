@@ -30,10 +30,20 @@ def preprocess_products(products: List[Dict]) -> List[Dict]:
 	"""Clean and extract relevant fields from products."""
 	processed = []
 	for prod in products:
+		# Handle description field which is an array
+		description_raw = prod.get('description', [])
+		if isinstance(description_raw, list) and description_raw:
+			# Join all description strings with a space
+			description_text = ' '.join(description_raw)
+		elif isinstance(description_raw, str):
+			description_text = description_raw
+		else:
+			description_text = ''
+		
 		item = {
 			'asin': prod.get('asin', ''),
 			'title': clean_text(prod.get('title', '')),
-			'description': clean_text(prod.get('description', '')),
+			'description': clean_text(description_text),
 			'also_buy': prod.get('also_buy', []),
 			'also_view': prod.get('also_view', []),
 			'similar_item': prod.get('similar_item', [])

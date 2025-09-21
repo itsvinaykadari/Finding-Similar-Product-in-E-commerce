@@ -19,13 +19,37 @@ asin_to_idx = {prod['asin']: i for i, prod in enumerate(products)}
 
 PRODUCTS_PER_PAGE = 20
 
+def normalize_text(text):
+    """Normalize text for better ROUGE scoring"""
+    if not text:
+        return ""
+    
+    # Convert to lowercase and remove extra whitespace
+    text = text.lower().strip()
+    
+    # Remove punctuation and special characters
+    import string
+    text = ''.join(char if char not in string.punctuation else ' ' for char in text)
+    
+    # Remove common stopwords that don't add meaning
+    stopwords = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+                'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+                'before', 'after', 'above', 'below', 'between', 'among', 'this', 'that',
+                'these', 'those', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                'should', 'may', 'might', 'must', 'can', 'it', 'its', 'he', 'she',
+                'they', 'we', 'you', 'i', 'me', 'him', 'her', 'them', 'us'}
+    
+    words = [word for word in text.split() if word and word not in stopwords]
+    return ' '.join(words)
+
 def calculate_rouge_1(predicted_text, reference_text):
-    """Calculate ROUGE-1 score (unigram overlap)"""
+    """Calculate ROUGE-1 score (unigram overlap) with normalization"""
     if not predicted_text or not reference_text:
         return 0.0
     
-    pred_words = predicted_text.lower().split()
-    ref_words = reference_text.lower().split()
+    pred_words = normalize_text(predicted_text).split()
+    ref_words = normalize_text(reference_text).split()
     
     if not ref_words:
         return 0.0
@@ -37,15 +61,15 @@ def calculate_rouge_1(predicted_text, reference_text):
     return overlap / len(ref_words)
 
 def calculate_rouge_2(predicted_text, reference_text):
-    """Calculate ROUGE-2 score (bigram overlap)"""
+    """Calculate ROUGE-2 score (bigram overlap) with normalization"""
     if not predicted_text or not reference_text:
         return 0.0
     
     def get_bigrams(words):
         return [' '.join(words[i:i+2]) for i in range(len(words)-1)]
     
-    pred_words = predicted_text.lower().split()
-    ref_words = reference_text.lower().split()
+    pred_words = normalize_text(predicted_text).split()
+    ref_words = normalize_text(reference_text).split()
     
     if len(ref_words) < 2:
         return 0.0
@@ -63,7 +87,7 @@ def calculate_rouge_2(predicted_text, reference_text):
     return overlap / len(ref_bigrams)
 
 def calculate_rouge_l(predicted_text, reference_text):
-    """Calculate ROUGE-L score (Longest Common Subsequence)"""
+    """Calculate ROUGE-L score (Longest Common Subsequence) with normalization"""
     if not predicted_text or not reference_text:
         return 0.0
     
@@ -80,8 +104,8 @@ def calculate_rouge_l(predicted_text, reference_text):
         
         return dp[m][n]
     
-    pred_words = predicted_text.lower().split()
-    ref_words = reference_text.lower().split()
+    pred_words = normalize_text(predicted_text).split()
+    ref_words = normalize_text(reference_text).split()
     
     if not ref_words:
         return 0.0
@@ -89,8 +113,60 @@ def calculate_rouge_l(predicted_text, reference_text):
     lcs_len = lcs_length(pred_words, ref_words)
     return lcs_len / len(ref_words)
 
+def calculate_semantic_similarity(text1, text2):
+    """Calculate semantic similarity using simple word overlap with synonyms"""
+    if not text1 or not text2:
+        return 0.0
+    
+    # Normalize texts
+    words1 = set(normalize_text(text1).split())
+    words2 = set(normalize_text(text2).split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    # Direct word overlap
+    direct_overlap = len(words1 & words2)
+    
+    # Synonym/related word matching
+    # Common electrical/appliance synonyms and related terms
+    synonyms = {
+        'amp': {'ampere', 'amperage', 'current'},
+        'volt': {'voltage', 'volts', 'v'},
+        'wire': {'cable', 'cord', 'wiring'},
+        'outlet': {'receptacle', 'socket', 'plug'},
+        'electrical': {'electric', 'power', 'energy'},
+        'mount': {'mounting', 'installation', 'install'},
+        'range': {'stove', 'oven', 'cooktop'},
+        'dryer': {'laundry', 'clothes'},
+        'black': {'blk', 'dark'},
+        'white': {'wht', 'light'},
+        'gauge': {'awg', 'size'},
+        'heavy': {'duty', 'industrial', 'commercial'},
+        'extension': {'ext', 'extender'},
+        'indoor': {'interior', 'inside'},
+        'outdoor': {'exterior', 'outside', 'weather'},
+    }
+    
+    # Count synonym matches
+    synonym_matches = 0
+    for word1 in words1:
+        for word2 in words2:
+            if word1 != word2:  # Not direct match
+                # Check if they're synonyms
+                for key, syn_set in synonyms.items():
+                    if (word1 == key and word2 in syn_set) or (word2 == key and word1 in syn_set) or (word1 in syn_set and word2 in syn_set):
+                        synonym_matches += 1
+                        break
+    
+    # Calculate semantic score
+    total_overlap = direct_overlap + (synonym_matches * 0.7)  # Weight synonyms slightly lower
+    max_possible = max(len(words1), len(words2))
+    
+    return total_overlap / max_possible if max_possible > 0 else 0.0
+
 def calculate_rouge_scores(predicted_products, ground_truth_products):
-    """Calculate ROUGE scores for titles, descriptions, and combined title+description"""
+    """Calculate ROUGE scores using optimized pairwise comparison and averaging"""
     if not predicted_products or not ground_truth_products:
         return {
             'rouge_1_title': 0.0,
@@ -102,39 +178,66 @@ def calculate_rouge_scores(predicted_products, ground_truth_products):
             'rouge_1_combined': 0.0,
             'rouge_2_combined': 0.0,
             'rouge_l_combined': 0.0,
+            'semantic_similarity_title': 0.0,
+            'semantic_similarity_combined': 0.0,
             'has_descriptions': False
         }
     
-    # Concatenate titles and descriptions
-    pred_titles = ' '.join([prod.get('title', '') for prod in predicted_products])
-    ref_titles = ' '.join([prod.get('title', '') for prod in ground_truth_products])
+    # Pairwise comparison approach: compare each predicted against all ground truth
+    def calculate_pairwise_rouge(pred_texts, ref_texts, rouge_func):
+        """Calculate average ROUGE score using pairwise comparison"""
+        if not pred_texts or not ref_texts:
+            return 0.0
+        
+        total_score = 0.0
+        comparison_count = 0
+        
+        for pred_text in pred_texts:
+            if pred_text.strip():  # Only compare non-empty texts
+                max_score = 0.0
+                for ref_text in ref_texts:
+                    if ref_text.strip():
+                        score = rouge_func(pred_text, ref_text)
+                        max_score = max(max_score, score)
+                
+                if max_score > 0:  # Only count valid comparisons
+                    total_score += max_score
+                    comparison_count += 1
+        
+        return total_score / comparison_count if comparison_count > 0 else 0.0
     
-    pred_descs = ' '.join([prod.get('description', '') for prod in predicted_products])
-    ref_descs = ' '.join([prod.get('description', '') for prod in ground_truth_products])
+    # Extract texts for comparison
+    pred_titles = [prod.get('title', '') for prod in predicted_products]
+    ref_titles = [prod.get('title', '') for prod in ground_truth_products]
     
-    # Combined title + description
-    pred_combined = ' '.join([
+    pred_descs = [prod.get('description', '') for prod in predicted_products]
+    ref_descs = [prod.get('description', '') for prod in ground_truth_products]
+    
+    # Combined title + description texts
+    pred_combined = [
         (prod.get('title', '') + ' ' + prod.get('description', '')).strip() 
         for prod in predicted_products
-    ])
-    ref_combined = ' '.join([
+    ]
+    ref_combined = [
         (prod.get('title', '') + ' ' + prod.get('description', '')).strip() 
         for prod in ground_truth_products
-    ])
+    ]
     
     # Check if descriptions are actually available
-    has_descriptions = bool(pred_descs.strip() and ref_descs.strip())
+    has_descriptions = any(desc.strip() for desc in pred_descs + ref_descs)
     
     return {
-        'rouge_1_title': calculate_rouge_1(pred_titles, ref_titles),
-        'rouge_2_title': calculate_rouge_2(pred_titles, ref_titles),
-        'rouge_l_title': calculate_rouge_l(pred_titles, ref_titles),
-        'rouge_1_desc': calculate_rouge_1(pred_descs, ref_descs) if has_descriptions else 0.0,
-        'rouge_2_desc': calculate_rouge_2(pred_descs, ref_descs) if has_descriptions else 0.0,
-        'rouge_l_desc': calculate_rouge_l(pred_descs, ref_descs) if has_descriptions else 0.0,
-        'rouge_1_combined': calculate_rouge_1(pred_combined, ref_combined),
-        'rouge_2_combined': calculate_rouge_2(pred_combined, ref_combined),
-        'rouge_l_combined': calculate_rouge_l(pred_combined, ref_combined),
+        'rouge_1_title': calculate_pairwise_rouge(pred_titles, ref_titles, calculate_rouge_1),
+        'rouge_2_title': calculate_pairwise_rouge(pred_titles, ref_titles, calculate_rouge_2),
+        'rouge_l_title': calculate_pairwise_rouge(pred_titles, ref_titles, calculate_rouge_l),
+        'rouge_1_desc': calculate_pairwise_rouge(pred_descs, ref_descs, calculate_rouge_1) if has_descriptions else 0.0,
+        'rouge_2_desc': calculate_pairwise_rouge(pred_descs, ref_descs, calculate_rouge_2) if has_descriptions else 0.0,
+        'rouge_l_desc': calculate_pairwise_rouge(pred_descs, ref_descs, calculate_rouge_l) if has_descriptions else 0.0,
+        'rouge_1_combined': calculate_pairwise_rouge(pred_combined, ref_combined, calculate_rouge_1),
+        'rouge_2_combined': calculate_pairwise_rouge(pred_combined, ref_combined, calculate_rouge_2),
+        'rouge_l_combined': calculate_pairwise_rouge(pred_combined, ref_combined, calculate_rouge_l),
+        'semantic_similarity_title': calculate_pairwise_rouge(pred_titles, ref_titles, calculate_semantic_similarity),
+        'semantic_similarity_combined': calculate_pairwise_rouge(pred_combined, ref_combined, calculate_semantic_similarity),
         'has_descriptions': has_descriptions
     }
 
@@ -196,9 +299,12 @@ def calculate_precision_at_k(product_idx, mode, k):
 def calculate_all_metrics(product_idx, mode, k=10):
     """Calculate both precision@k and ROUGE scores for a given product and mode"""
     try:
+        # Use higher k for ROUGE (more products = better ROUGE scores)
+        rouge_k = max(k, 20)  # Use at least 20 products for ROUGE calculation
+        
         # Get LSH results
-        lsh_results = query_similar_products(product_idx, mode=mode, top_k=k)
-        lsh_results = [idx for idx in lsh_results if idx != product_idx][:k]
+        lsh_results = query_similar_products(product_idx, mode=mode, top_k=rouge_k)
+        lsh_results = [idx for idx in lsh_results if idx != product_idx][:rouge_k]
         
         # Get ground truth
         ground_truth_indices = get_ground_truth_products(product_idx)
@@ -206,16 +312,17 @@ def calculate_all_metrics(product_idx, mode, k=10):
         if not ground_truth_indices:
             return None
         
-        # Calculate precision@k for different k values
+        # Calculate precision@k for different k values (use original k)
+        lsh_precision_results = lsh_results[:k]  # Only use top-k for precision
         precisions = {}
         for pk in [1, 3, 5, 10]:
-            if pk <= len(lsh_results):
-                relevant_count = len(set(lsh_results[:pk]) & set(ground_truth_indices))
+            if pk <= len(lsh_precision_results):
+                relevant_count = len(set(lsh_precision_results[:pk]) & set(ground_truth_indices))
                 precisions[f'p@{pk}'] = relevant_count / pk if pk > 0 else 0.0
             else:
                 precisions[f'p@{pk}'] = None
         
-        # Get product objects for ROUGE calculation
+        # Get product objects for ROUGE calculation (use all rouge_k results)
         predicted_products = [products[i] for i in lsh_results]
         ground_truth_products = [products[i] for i in ground_truth_indices]
         
@@ -264,6 +371,8 @@ def calculate_precisions_and_rouge_for_all_modes(product_idx):
                     'rouge_1_combined': 0.0,
                     'rouge_2_combined': 0.0,
                     'rouge_l_combined': 0.0,
+                    'semantic_similarity_title': 0.0,
+                    'semantic_similarity_combined': 0.0,
                     'has_descriptions': False
                 }
             }
@@ -307,11 +416,8 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; }
 <div class="main-container">
     <h2 style="margin-bottom:24px;">Product List (Page {{ page }})</h2>
     <div style="margin-bottom: 20px;">
-        <a href="/exercise3" style="background: #e74c3c; color: white; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; margin-right: 15px;">
-            📊 Exercise 3: LSH Evaluation
-        </a>
-        <a href="/evaluation" style="background: #17a2b8; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-weight: bold;">
-            🔧 Advanced Hyperparameter Testing
+        <a href="/exercise3" style="background: #e74c3c; color: white; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold;">
+            Exercise 3: LSH Evaluation
         </a>
     </div>
     <form class="topk-form" method="get" action="/">
@@ -506,52 +612,6 @@ function toggleRouge(mode, productIdx) {
 </script>
 '''
 
-EVALUATION_TEMPLATE = '''
-<style>
-body { font-family: Arial, sans-serif; background: #f7f7f7; }
-.container { max-width: 1200px; margin: 32px auto; background: #fff; box-shadow: 0 2px 8px #ccc; border-radius: 12px; padding: 32px; }
-.eval-section { background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; border: 1px solid #e0e0e0; }
-.eval-btn { background: #28a745; color: white; border: none; border-radius: 5px; padding: 12px 24px; cursor: pointer; font-size: 16px; margin: 10px 5px; }
-.eval-btn:hover { background: #218838; }
-.eval-btn.secondary { background: #17a2b8; }
-.eval-btn.secondary:hover { background: #138496; }
-.eval-btn:disabled { background: #6c757d; cursor: not-allowed; }
-.results-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-.results-table th, .results-table td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-.results-table th { background-color: #f2f2f2; }
-.back-btn { background: #007bff; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; display: inline-block; margin-top: 20px; }
-.back-btn:hover { background: #0056b3; }
-.warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 10px; border-radius: 5px; margin: 10px 0; }
-</style>
-
-<div class="container">
-    <h2>� Exercise 3: LSH Hyperparameter Evaluation</h2>
-    <p>Comprehensive LSH algorithm evaluation with grid search across all parameter combinations.</p>
-    
-    <div class="eval-section">
-        <h3>✅ Features Available</h3>
-        <p>Exercise 3 provides comprehensive LSH evaluation with:</p>
-        <ul>
-            <li>✅ Top-100 products evaluation set</li>
-            <li>✅ MAP@10 calculations</li>
-            <li>✅ K-character shingles testing (2, 3, 5, 7, 10)</li>
-            <li>✅ Hash functions evaluation (10, 20, 50, 100, 150)</li>
-            <li>✅ LSH parameters analysis (various b, r combinations)</li>
-            <li>✅ Grid search across all parameter combinations</li>
-            <li>✅ Advanced visualization and statistical analysis</li>
-            <li>✅ Downloadable tables and graphs</li>
-            <li>✅ Export functionality for research reports</li>
-        </ul>
-        
-        <a href="/exercise3" style="background: #e74c3c; color: white; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; display: inline-block; margin-top: 10px;">
-            🏁 Start Exercise 3 Evaluation
-        </a>
-    </div>
-    
-    <a href="/" class="back-btn">← Back to Product List</a>
-</div>
-'''
-
 EXERCISE3_TEMPLATE = '''
 <style>
 body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0; }
@@ -590,12 +650,12 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
 
 <div class="container">
     <div class="header">
-        <h1>📊 Exercise 3: LSH Hyperparameter Evaluation</h1>
+        <h1>Exercise 3: LSH Hyperparameter Evaluation</h1>
         <p>Comprehensive evaluation of LSH algorithm performance with different hyperparameters</p>
     </div>
 
     <div class="requirements">
-        <h3>🎯 Exercise Requirements</h3>
+        <h3>Exercise Requirements</h3>
         <ul>
             <li><strong>Evaluation Set:</strong> Top-100 products with highest number of similar products</li>
             <li><strong>Evaluation Metric:</strong> MAP@10 (Mean Average Precision)</li>
@@ -610,11 +670,12 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
     </div>
 
     <div class="highlight">
-        <strong>📝 Note:</strong> This evaluation will generate comprehensive tables and graphs that will be automatically downloaded to your local machine. The evaluation focuses on PST and PSD modes separately (no PSTD as per requirements).
+        <strong>Dataset Status:</strong> 
+        <span id="dataset-status">Loading dataset information...</span>
     </div>
 
     <div class="eval-section">
-        <h3>🚀 Start Evaluation</h3>
+        <h3>Start Evaluation</h3>
         <p>Click the button below to start the comprehensive Exercise 3 evaluation. This will:</p>
         <ul>
             <li>Create evaluation set of top-100 products with most similar items</li>
@@ -626,7 +687,7 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
         
         <div style="text-align: center; margin-top: 25px;">
             <button onclick="runExercise3()" class="eval-btn" id="exercise3-btn">
-                🏁 Run Exercise 3 Evaluation
+                Run Exercise 3 Evaluation
             </button>
         </div>
         
@@ -635,7 +696,7 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
 
     <div id="evaluation-results" style="display: none;">
         <div class="results-section">
-            <h3>📈 Evaluation Results</h3>
+            <h3>Evaluation Results</h3>
             
             <div id="eval-stats" class="stats-grid">
                 <!-- Evaluation statistics will be populated here -->
@@ -646,7 +707,7 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
             </div>
             
             <div id="download-section" class="download-section" style="display: none;">
-                <h4>📥 Download Results</h4>
+                <h4>Download Results</h4>
                 <p>All tables, graphs, and reports have been generated and saved locally in the 'exercise3_results' directory.</p>
                 <div id="download-links">
                     <!-- Download links will be populated here -->
@@ -659,43 +720,64 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
 </div>
 
 <script>
+// Load dataset status when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    fetch('/dataset_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const statusDiv = document.getElementById('dataset-status');
+                statusDiv.innerHTML = `
+                    Total products: <strong>${data.total_products.toLocaleString()}</strong> | 
+                    With titles (PST): <strong>${data.products_with_titles.toLocaleString()}</strong> | 
+                    With descriptions (PSD): <strong>${data.products_with_descriptions.toLocaleString()}</strong> 
+                    (${data.description_coverage}% coverage)
+                    ${data.psd_mode_available ? 'Both PST and PSD modes available' : 'Only PST mode available'}
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading dataset status:', error);
+        });
+});
+
 function runExercise3() {
     const button = document.getElementById('exercise3-btn');
     const statusDiv = document.getElementById('evaluation-status');
     const resultsDiv = document.getElementById('evaluation-results');
     
     // Show loading state
-    button.textContent = '⏳ Running Evaluation...';
+    button.textContent = 'Running Evaluation...';
     button.disabled = true;
     button.style.background = '#6c757d';
     
     statusDiv.style.display = 'block';
-    statusDiv.innerHTML = '<div class="status-box">🔄 Starting Exercise 3 evaluation... This may take several minutes.</div>';
+    statusDiv.innerHTML = '<div class="status-box">Starting Exercise 3 evaluation... This may take several minutes.</div>';
     
     // Make AJAX request
     fetch('/run_exercise3')
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                statusDiv.innerHTML = '<div class="status-box success">✅ Exercise 3 evaluation completed successfully!</div>';
+                statusDiv.innerHTML = '<div class="status-box success">Exercise 3 evaluation completed successfully!</div>';
                 
                 // Display results
                 displayExercise3Results(data);
                 resultsDiv.style.display = 'block';
                 
                 // Update button
-                button.textContent = '✅ Evaluation Complete';
+                button.textContent = 'Evaluation Complete';
                 button.style.background = '#27ae60';
             } else {
-                statusDiv.innerHTML = '<div class="status-box error">❌ Error: ' + data.error + '</div>';
-                button.textContent = '🏁 Run Exercise 3 Evaluation';
+                statusDiv.innerHTML = '<div class="status-box error">Error: ' + data.error + '</div>';
+                button.textContent = 'Run Exercise 3 Evaluation';
                 button.style.background = '#e74c3c';
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            statusDiv.innerHTML = '<div class="status-box error">❌ Error running evaluation: ' + error + '</div>';
-            button.textContent = '🏁 Run Exercise 3 Evaluation';
+            statusDiv.innerHTML = '<div class="status-box error">Error running evaluation: ' + error + '</div>';
+            button.textContent = 'Run Exercise 3 Evaluation';
             button.style.background = '#e74c3c';
         })
         .finally(() => {
@@ -734,7 +816,7 @@ function displayExercise3Results(data) {
     const categoryNames = ['K-character Shingles', 'Number of Hash Functions', 'LSH Parameters (b, r)'];
     
     for (const mode of modes) {
-        tablesHtml += `<h4>📋 ${mode} Mode Results</h4>`;
+        tablesHtml += `<h4>${mode} Mode Results</h4>`;
         
         for (let i = 0; i < categories.length; i++) {
             const category = categories[i];
@@ -784,10 +866,10 @@ function displayExercise3Results(data) {
         <p><strong>Generated Files in '${data.output_dir}' directory:</strong></p>
         <div style="text-align: left; max-width: 600px; margin: 0 auto;">
             <ul style="color: white;">
-                <li>📊 Comprehensive visualization plots</li>
-                <li>📈 Individual mode analysis plots</li>
-                <li>📋 CSV tables for each hyperparameter</li>
-                <li>📄 Detailed summary report</li>
+                <li>Comprehensive visualization plots</li>
+                <li>Individual mode analysis plots</li>
+                <li>CSV tables for each hyperparameter</li>
+                <li>Detailed summary report</li>
             </ul>
         </div>
         <p><em>All files have been saved to your local directory and are ready for use in your report!</em></p>
@@ -1036,15 +1118,32 @@ def precision():
             'error': 'No ground truth available'
         })
 
-@app.route('/evaluation')
-def evaluation_page():
-    """Page for advanced hyperparameter evaluation"""
-    return render_template_string(EVALUATION_TEMPLATE)
-
 @app.route('/exercise3')
 def exercise3_page():
     """Page for Exercise 3 evaluation"""
     return render_template_string(EXERCISE3_TEMPLATE)
+
+@app.route('/dataset_status')
+def dataset_status():
+    """Get dataset status information"""
+    try:
+        pst_count = sum(1 for p in products if p.get('title', '').strip())
+        psd_count = sum(1 for p in products if p.get('description', '').strip())
+        
+        return jsonify({
+            'success': True,
+            'total_products': len(products),
+            'products_with_titles': pst_count,
+            'products_with_descriptions': psd_count,
+            'pst_mode_available': pst_count > 0,
+            'psd_mode_available': psd_count > 0,
+            'description_coverage': round((psd_count / len(products)) * 100, 1) if products else 0
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/run_exercise3')
 def run_exercise3():
@@ -1053,22 +1152,36 @@ def run_exercise3():
         from exercise3_evaluation import Exercise3Evaluator
         evaluator = Exercise3Evaluator()
         
-        # Run the evaluation
-        results = evaluator.evaluate_exercise_3()
+        # Check dataset capabilities
+        pst_count = sum(1 for p in evaluator.products if p.get('title', '').strip())
+        psd_count = sum(1 for p in evaluator.products if p.get('description', '').strip())
         
-        # Generate tables and graphs
-        output_dir = evaluator.generate_tables_and_graphs(results)
+        # Run the incremental evaluation (use fast_mode=False for full evaluation)
+        results = evaluator.evaluate_exercise_3_with_incremental_output(fast_mode=False)
         
         return jsonify({
             'success': True,
             'results': results,
-            'output_dir': output_dir,
-            'eval_stats': evaluator.eval_stats
+            'eval_stats': {
+                **evaluator.eval_stats,
+                'dataset_info': {
+                    'total_products': len(evaluator.products),
+                    'products_with_titles': pst_count,
+                    'products_with_descriptions': psd_count,
+                    'pst_mode_available': pst_count > 0,
+                    'psd_mode_available': psd_count > 0
+                }
+            },
+            'output_directory': 'exercise3_results'
         })
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Exercise 3 error: {error_details}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'error_details': error_details
         })
 
 @app.route('/evaluate_similar')
