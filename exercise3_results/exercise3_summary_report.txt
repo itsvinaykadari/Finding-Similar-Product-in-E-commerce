@@ -1,0 +1,9 @@
+=== Mode: PST ===
+Best Shingle K: 7 (MAP@10: 0.0167)
+Best Number of Hashes: 150 (MAP@10: 0.0221)
+Best LSH Params (b, r): (4, 25) (MAP@10: 0.0277)
+
+=== Mode: PSD ===
+Best Shingle K: 10 (MAP@10: 0.0176)
+Best Number of Hashes: 50 (MAP@10: 0.0049)
+Best LSH Params (b, r): (4, 25) (MAP@10: 0.0097)
