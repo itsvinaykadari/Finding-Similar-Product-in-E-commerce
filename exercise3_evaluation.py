@@ -52,6 +52,17 @@ class Exercise3Evaluator:
         
         # Calculate statistics
         sim_counts = [count for _, count in products_with_sim_count[:100]]
+        
+        if not sim_counts:
+            print("Warning: No products with valid similar items found!")
+            stats = {
+                'max_similar_items': 0,
+                'min_similar_items': 0,
+                'avg_similar_items': 0,
+                'total_products': 0
+            }
+            return [], stats
+        
         stats = {
             'max_similar_items': max(sim_counts),
             'min_similar_items': min(sim_counts),
@@ -72,20 +83,27 @@ class Exercise3Evaluator:
             return 0
             
         if isinstance(similar_items, str) and similar_items.strip():
-            # Extract ASINs from HTML
+            # Extract ASINs from HTML (legacy format)
             asin_pattern = r'/dp/([A-Z0-9]{10})'
             matches = re.findall(asin_pattern, similar_items)
             valid_asins = [asin for asin in set(matches) if asin in self.asin_to_idx]
             return len(valid_asins)
         elif isinstance(similar_items, list):
-            count = 0
+            # Handle cleaned ASIN list (new format)
+            valid_count = 0
             for item in similar_items:
                 if isinstance(item, str) and item.strip():
-                    asin_pattern = r'/dp/([A-Z0-9]{10})'
-                    matches = re.findall(asin_pattern, item)
-                    valid_asins = [asin for asin in set(matches) if asin in self.asin_to_idx]
-                    count += len(valid_asins)
-            return count
+                    # Check if it's a direct ASIN (new cleaned format)
+                    clean_item = item.strip()
+                    if clean_item in self.asin_to_idx:
+                        valid_count += 1
+                    else:
+                        # Try to extract ASIN from URL pattern (legacy format)
+                        asin_pattern = r'/dp/([A-Z0-9]{10})'
+                        matches = re.findall(asin_pattern, item)
+                        valid_asins = [asin for asin in set(matches) if asin in self.asin_to_idx]
+                        valid_count += len(valid_asins)
+            return valid_count
         
         return 0
     
@@ -96,15 +114,23 @@ class Exercise3Evaluator:
         
         asins = []
         if isinstance(similar_items, str) and similar_items.strip():
+            # Extract ASINs from HTML (legacy format)
             asin_pattern = r'/dp/([A-Z0-9]{10})'
             matches = re.findall(asin_pattern, similar_items)
             asins = list(set(matches))
         elif isinstance(similar_items, list):
+            # Handle cleaned ASIN list (new format)
             for item in similar_items:
                 if isinstance(item, str) and item.strip():
-                    asin_pattern = r'/dp/([A-Z0-9]{10})'
-                    matches = re.findall(asin_pattern, item)
-                    asins.extend(matches)
+                    clean_item = item.strip()
+                    # Check if it's a direct ASIN (new cleaned format)
+                    if len(clean_item) >= 8 and len(clean_item) <= 15 and clean_item.isalnum():
+                        asins.append(clean_item)
+                    else:
+                        # Try to extract ASIN from URL pattern (legacy format)
+                        asin_pattern = r'/dp/([A-Z0-9]{10})'
+                        matches = re.findall(asin_pattern, item)
+                        asins.extend(matches)
             asins = list(set(asins))
         
         # Convert ASINs to indices

@@ -671,6 +671,25 @@ body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 
         </ul>
     </div>
 
+    <div class="stats-grid" id="eval-stats-section" style="display: none;">
+        <div class="stat-card">
+            <div class="stat-value" id="max-similar-stat">-</div>
+            <div class="stat-label">Max Similar Items</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="min-similar-stat">-</div>
+            <div class="stat-label">Min Similar Items</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="avg-similar-stat">-</div>
+            <div class="stat-label">Average Similar Items</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="total-similar-stat">-</div>
+            <div class="stat-label">Products with Similar Items</div>
+        </div>
+    </div>
+
     <div class="highlight">
         <strong>Dataset Status:</strong> 
         <span id="dataset-status">Loading dataset information...</span>
@@ -733,9 +752,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     Total products: <strong>${data.total_products.toLocaleString()}</strong> | 
                     With titles (PST): <strong>${data.products_with_titles.toLocaleString()}</strong> | 
                     With descriptions (PSD): <strong>${data.products_with_descriptions.toLocaleString()}</strong> 
-                    (${data.description_coverage}% coverage)
-                    ${data.psd_mode_available ? 'Both PST and PSD modes available' : 'Only PST mode available'}
+                    (${data.description_coverage}% coverage) | 
+                    Products with similar items: <strong>${data.products_with_similar.toLocaleString()}</strong><br>
+                    <em>Evaluation Set Statistics:</em> 
+                    Max similar items: <strong>${data.max_similar_items}</strong> | 
+                    Min similar items: <strong>${data.min_similar_items}</strong> | 
+                    Average: <strong>${data.avg_similar_items}</strong>
+                    ${data.psd_mode_available ? '<br><span style="color: #27ae60;">✓ Both PST and PSD modes available</span>' : '<br><span style="color: #e74c3c;">⚠ Only PST mode available</span>'}
                 `;
+                
+                // Show and populate the statistics cards
+                document.getElementById('eval-stats-section').style.display = 'grid';
+                document.getElementById('max-similar-stat').textContent = data.max_similar_items;
+                document.getElementById('min-similar-stat').textContent = data.min_similar_items;
+                document.getElementById('avg-similar-stat').textContent = data.avg_similar_items;
+                document.getElementById('total-similar-stat').textContent = data.products_with_similar.toLocaleString();
             }
         })
         .catch(error => {
@@ -1087,6 +1118,21 @@ def dataset_status():
         pst_count = sum(1 for p in products if p.get('title', '').strip())
         psd_count = sum(1 for p in products if p.get('description', '').strip())
         
+        # Calculate similar items statistics for evaluation set
+        similar_counts = []
+        for product in products:
+            similar_items = product.get('similar_item', [])
+            if similar_items:
+                similar_counts.append(len(similar_items))
+        
+        # Get max and min similar item counts
+        max_similar = max(similar_counts) if similar_counts else 0
+        min_similar = min(similar_counts) if similar_counts else 0
+        avg_similar = sum(similar_counts) / len(similar_counts) if similar_counts else 0
+        
+        # Count products with similar items
+        products_with_similar = len(similar_counts)
+        
         return jsonify({
             'success': True,
             'total_products': len(products),
@@ -1094,7 +1140,11 @@ def dataset_status():
             'products_with_descriptions': psd_count,
             'pst_mode_available': pst_count > 0,
             'psd_mode_available': psd_count > 0,
-            'description_coverage': round((psd_count / len(products)) * 100, 1) if products else 0
+            'description_coverage': round((psd_count / len(products)) * 100, 1) if products else 0,
+            'products_with_similar': products_with_similar,
+            'max_similar_items': max_similar,
+            'min_similar_items': min_similar,
+            'avg_similar_items': round(avg_similar, 2)
         })
     except Exception as e:
         return jsonify({
